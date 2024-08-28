@@ -1,0 +1,28 @@
+[package]
+name = "newsletter"
+version = "0.1.0"
+edition = "2021"
+
+
+[lib]
+path = "src/lib.rs"
+
+# Notice the double square brackets: it's an array in TOML's syntax.
+# We can only have one library in a project, but we can have multiple binaries!
+# If you want to manage multiple libraries in the same repository
+[[bin]]
+path = "src/main.rs"
+name = "newsletter"
+
+[dependencies]
+actix-web = "4.9.0"
+chrono = { version = "0.4.38", features = ["serde"] }
+diesel = { version = "2.2.3", features = ["chrono", "postgres", "r2d2", "uuid"] }
+diesel_migrations = "2.2.0"
+dotenv = "0.15.0"
+serde = { version = "1.0.209", features = ["derive"] }
+tokio = { version = "1.39.3", features = ["macros", "rt-multi-thread"] }
+uuid = {version= "1.10.0", features=["v4", "serde"]}
+
+[dev-dependencies]
+reqwest = "0.11"
