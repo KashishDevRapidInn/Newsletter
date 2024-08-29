@@ -14,6 +14,25 @@ use dotenv::dotenv;
 use std::env;
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel_migrations::MigrationHarness;
+use newsletter::telemetry::{get_subscriber, init_subscriber};
+use once_cell::sync::Lazy;
+
+// This static variable will ensure `init_subscriber` is called only once
+static TRACING: Lazy<()> = Lazy::new(|| {
+    let default_filter_level = "info".to_string();
+    let subscriber_name = "test".to_string();
+    // We cannot assign the output of `get_subscriber` to a variable based on the value of `TEST_LOG`
+    // because the sink is part of the type returned by `get_subscriber`, therefore they are not the
+    // same type. We could work around it, but this is the most straight-forward way of moving forward.
+    if std::env::var("TEST_LOG").is_ok() {
+    let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::stdout);
+    init_subscriber(subscriber);
+    } else {
+    let subscriber = get_subscriber(subscriber_name, default_filter_level, std::io::sink);
+    init_subscriber(subscriber);
+    };
+});
+
 
 pub struct TestApp {
     pub address: String,
@@ -26,6 +45,9 @@ pub fn run_db_migrations(conn: &mut impl MigrationHarness<diesel::pg::Pg>) {
 }
 
 fn spawn_app() -> TestApp {
+    // To Ensure that the tracing stack is only initialized once
+    Lazy::force(&TRACING);
+
     dotenv().ok();
     let database_name = Uuid::new_v4().to_string();
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
