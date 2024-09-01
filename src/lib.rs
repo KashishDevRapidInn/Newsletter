@@ -4,4 +4,5 @@ pub mod schema;
 pub mod startup;
 mod routes;
 pub mod telemetry;
-mod domain; 
+pub mod domain; 
+pub mod email_client;
