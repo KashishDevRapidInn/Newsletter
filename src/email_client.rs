@@ -1,16 +1,15 @@
 use crate::domain::SubscriberEmail;
 use reqwest::Client;
-use serde::Serialize;
 use secrecy::{ExposeSecret, Secret};
-
+use serde;
 pub struct EmailClient{
     http_client: Client,
     base_url: String,
-    sender: SubscriberEmail,
-    authorization_token: Secret<String>
+    sender: SubscriberEmail, 
+    authorization_token: Secret<String> 
 }
 
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, Debug)]
 #[serde(rename_all = "PascalCase")]
 struct SendEmailRequest<'a> {
     from: &'a str,
@@ -37,6 +36,10 @@ impl EmailClient{
             html_body: html_content,
             text_body: text_content,
         };
+
+
+    println!("Sending request to URL: {}", url);
+    println!("Request body: {:?}", request_body);
         let builder = self
                     .http_client
                     .post(&url)
@@ -47,16 +50,20 @@ impl EmailClient{
                     .json(&request_body)
                     .send()
                     .await?
-                    .error_for_status()?;
+                    .error_for_status()?; 
+
+                println!("Received response status: {}", builder.status());
+
         Ok(())
 
     }
-    pub fn new(base_url: String, sender: SubscriberEmail,authorization_token: Secret<String>, timeout: std::time::Duration)-> Self {
+    pub fn new(base_url: String, sender: SubscriberEmail, authorization_token: Secret<String>, timeout: std::time::Duration)-> Self {
+        
         let http_client = Client::builder()
                                     .timeout(timeout)
                                     .build()
                                     .unwrap();
-        Self {
+        Self{
             http_client,
             base_url,
             sender,
@@ -132,19 +139,18 @@ mod tests {
     #[tokio::test]
     async fn send_email_sends_the_expected_request() {
         
-        // Arrange
         let mock_server = MockServer::start().await;
         let email_client = email_client(mock_server.uri());
 
         Mock::given(header_exists("X-Postmark-Server-Token"))
-        .and(header("Content-Type", "application/json"))
-        .and(path("/email"))
-        .and(method("POST"))
-        .and(SendEmailBodyMatcher)
-        .respond_with(ResponseTemplate::new(200))
-        .expect(1)
-        .mount(&mock_server)
-        .await;
+            .and(header("Content-Type", "application/json"))
+            .and(path("/email"))
+            .and(method("POST"))
+            .and(SendEmailBodyMatcher)
+            .respond_with(ResponseTemplate::new(200))
+            .expect(1)
+            .mount(&mock_server)
+            .await;
 
         // Act
         let _ = email_client

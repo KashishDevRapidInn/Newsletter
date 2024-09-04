@@ -2,19 +2,26 @@
 
 #![allow(unused)]
 #![allow(clippy::all)]
+use crate::schema::subscription_tokens;
 
-use diesel::prelude::*;
-use uuid::Uuid;
-use chrono::DateTime;
 use chrono::offset::Utc;
-use diesel::Queryable;
-use serde::Serialize;
+use chrono::DateTime;
+use diesel::{Identifiable, Queryable};
+use serde::Deserialize;
+use uuid::Uuid;
 
-#[derive(Queryable, Debug, Serialize)]
+#[derive(Queryable, Debug, Identifiable, Deserialize)]
+#[diesel(primary_key(subscription_token))]
+pub struct SubscriptionToken {
+    pub subscription_token: String,
+    pub subscriber_id: Uuid,
+}
+
+#[derive(Queryable, Debug, Deserialize)]
 pub struct Subscription {
     pub id: Uuid,
     pub email: String,
     pub name: String,
     pub subscribed_at: DateTime<Utc>,
+    pub status: Option<String>,
 }
-

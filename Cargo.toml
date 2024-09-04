@@ -38,7 +38,7 @@ rand_core = "0.6.4"
 rand = "0.8.5"
 reqwest = { version = "0.12.7", features = ["json", "rustls-tls"] }
 serde_json = "1.0.127"
-
+linkify = "0.10.0"
 
 [dev-dependencies]
 quickcheck = "1.0.3"
