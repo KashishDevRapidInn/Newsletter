@@ -3,7 +3,7 @@ use diesel::prelude::*;
 use newsletter::db::drop_database;
 use newsletter::db_models::Subscription;
 use newsletter::schema::subscriptions::dsl::*;
-use reqwest::{self, Url};
+use reqwest;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, ResponseTemplate};
 

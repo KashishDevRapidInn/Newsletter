@@ -19,29 +19,29 @@ impl AsRef<str> for SubscriberEmail {
 }
 
 #[cfg(test)]
-mod tests{
-    use fake::faker::internet::en::SafeEmail;
-    use fake::Fake; 
+mod tests {
     use super::SubscriberEmail;
-    use claim::{assert_err, assert_ok};
+    use claim::assert_err;
+    use fake::faker::internet::en::SafeEmail;
+    use fake::Fake;
     use quickcheck::{Arbitrary, Gen};
     use rand::rngs::StdRng;
-    use rand::SeedableRng;
     use rand::RngCore;
+    use rand::SeedableRng;
 
     #[test]
-    fn empty_string_is_rejected(){
-        let email= "".to_string();
+    fn empty_string_is_rejected() {
+        let email = "".to_string();
         assert_err!(SubscriberEmail::parse(email));
     }
     #[test]
-    fn email_missing_at_symbol_is_rejected(){
-        let email= "kkgmail.com".to_string();
+    fn email_missing_at_symbol_is_rejected() {
+        let email = "kkgmail.com".to_string();
         assert_err!(SubscriberEmail::parse(email));
     }
     #[test]
-    fn email_missing_subject_is_rejected(){
-        let email= "@gmail.com".to_string();
+    fn email_missing_subject_is_rejected() {
+        let email = "@gmail.com".to_string();
         assert_err!(SubscriberEmail::parse(email));
     }
 
@@ -59,9 +59,9 @@ mod tests{
             Self(email)
         }
     }
- 
+
     #[quickcheck_macros::quickcheck] //generates multiple test cases based on the ValidEmailFixture type.
-    fn valid_emails_are_parsed_successfully(valid_email: ValidEmailFixture)->bool {
-       SubscriberEmail::parse(valid_email.0).is_ok()    
+    fn valid_emails_are_parsed_successfully(valid_email: ValidEmailFixture) -> bool {
+        SubscriberEmail::parse(valid_email.0).is_ok()
     }
 }

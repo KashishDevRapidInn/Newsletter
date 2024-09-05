@@ -2,23 +2,22 @@ use diesel::prelude::*;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 
-
-use tokio;
-use newsletter::db::create_database;
-use newsletter::db::PgPool;
-use uuid::Uuid;
-use dotenv::dotenv;
-use std::env;
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel_migrations::MigrationHarness;
+use dotenv::dotenv;
+use newsletter::db::create_database;
+use newsletter::db::PgPool;
+use newsletter::startup::Application;
 use newsletter::telemetry::{get_subscriber, init_subscriber};
 use once_cell::sync::Lazy;
-use newsletter::startup::Application;
+use std::env;
+use tokio;
+use uuid::Uuid;
 use wiremock::MockServer;
 
-
 static TRACING: Lazy<()> = Lazy::new(|| {
-    let default_filter_level = "info".to_string();
+    dotenv().ok();
+    let default_filter_level = "diesel= errors, info".to_string();
     let subscriber_name = "test".to_string();
     // We cannot assign the output of `get_subscriber` to a variable based on the value of `TEST_LOG`
     // because the sink is part of the type returned by `get_subscriber`, therefore they are not the
@@ -32,7 +31,6 @@ static TRACING: Lazy<()> = Lazy::new(|| {
     };
 });
 
-
 pub struct TestApp {
     pub port: u16,
     pub address: String,
@@ -42,7 +40,7 @@ pub struct TestApp {
 }
 pub struct ConfirmationLinks {
     pub html: reqwest::Url,
-    pub plain_text: reqwest::Url
+    pub plain_text: reqwest::Url,
 }
 
 impl TestApp {
@@ -56,8 +54,7 @@ impl TestApp {
             .expect("Failed to execute request.")
     }
 
-    pub fn get_confirmation_links(&self, email_request: &wiremock::Request)-> ConfirmationLinks {
-
+    pub fn get_confirmation_links(&self, email_request: &wiremock::Request) -> ConfirmationLinks {
         let body: serde_json::Value = serde_json::from_slice(&email_request.body).unwrap();
 
         let get_link = |s: &str| {
@@ -65,7 +62,7 @@ impl TestApp {
                 .links(s)
                 .filter(|l| *l.kind() == linkify::LinkKind::Url)
                 .collect();
-        
+
             assert_eq!(links.len(), 1);
             let raw_link = links[0].as_str().to_owned();
             let mut confirmation_link = reqwest::Url::parse(&raw_link).unwrap();
@@ -78,16 +75,13 @@ impl TestApp {
         let html = get_link(&body["HtmlBody"].as_str().unwrap());
         let plain_text = get_link(&body["TextBody"].as_str().unwrap());
 
-        ConfirmationLinks {
-            html,
-            plain_text
-        }
+        ConfirmationLinks { html, plain_text }
     }
-
 }
 
 pub fn run_db_migrations(conn: &mut impl MigrationHarness<diesel::pg::Pg>) {
-    conn.run_pending_migrations(MIGRATIONS).expect("Could not run migrations");
+    conn.run_pending_migrations(MIGRATIONS)
+        .expect("Could not run migrations");
 }
 
 pub async fn spawn_app() -> TestApp {
@@ -103,13 +97,17 @@ pub async fn spawn_app() -> TestApp {
 
     let new_database_url = format!("{}/{}", database_url, database_name);
     let manager = ConnectionManager::<PgConnection>::new(new_database_url.clone());
-    let pool = Pool::builder().build(manager).expect("Failed to create pool.");
+    let pool = Pool::builder()
+        .build(manager)
+        .expect("Failed to create pool.");
 
     // Run migrations
     let mut conn = pool.get().expect("Couldn't get db connection from Pool");
     run_db_migrations(&mut conn);
 
-    let application = Application::build(0, pool.clone(), Some(base_uri)).await.expect("Failed to build application");
+    let application = Application::build(0, pool.clone(), Some(base_uri))
+        .await
+        .expect("Failed to build application");
     let application_port = application.port();
     let address = format!("http://127.0.0.1:{}", application_port);
     let _ = tokio::spawn(application.run_until_stopped());
@@ -119,6 +117,6 @@ pub async fn spawn_app() -> TestApp {
         address,
         db_pool: pool.clone(),
         database_name,
-        email_server
+        email_server,
     }
 }

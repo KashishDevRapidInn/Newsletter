@@ -5,18 +5,18 @@ use crate::schema::subscription_tokens;
 use crate::schema::subscription_tokens::dsl as subs_token_dsl;
 use crate::schema::subscriptions::{self, dsl::*};
 use crate::startup::ApplicationBaseUrl;
-use actix_web::{web, HttpResponse};
+use actix_web::{web, HttpResponse, ResponseError};
 use chrono::Utc;
 use diesel::pg::PgConnection;
 use diesel::prelude::Insertable;
 use diesel::prelude::*;
-use diesel::r2d2::{ConnectionManager, PooledConnection};
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use reqwest;
 use serde::Deserialize;
-use tracing::{error, info_span, Instrument};
+use tracing;
 use uuid::Uuid;
+
 #[derive(Deserialize)]
 pub struct FormData {
     email: String,
@@ -30,6 +30,41 @@ pub struct NewSubscription {
     pub name: String,
     pub subscribed_at: chrono::NaiveDateTime,
     pub status: String,
+}
+
+pub struct StoreTokenError(diesel::result::Error);
+impl std::fmt::Display for StoreTokenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "A database error was encountered while trying to store a subscription token."
+        )
+    }
+}
+
+impl std::error::Error for StoreTokenError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.0)
+    }
+}
+
+impl std::fmt::Debug for StoreTokenError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        error_chain_fmt(self, f)
+    }
+}
+
+fn error_chain_fmt(
+    e: &impl std::error::Error,
+    f: &mut std::fmt::Formatter<'_>,
+) -> std::fmt::Result {
+    writeln!(f, "{}\n", e)?;
+    let mut current = e.source();
+    while let Some(cause) = current {
+        writeln!(f, "Caused by:\n\t{}", cause)?;
+        current = cause.source();
+    }
+    Ok(())
 }
 
 fn generate_subscription_token() -> String {
@@ -48,7 +83,7 @@ fn generate_subscription_token() -> String {
 fn insert_subscriber(
     conn: &mut PgConnection,
     new_subscriber: &NewSubscriber,
-) -> Result<(Uuid), diesel::result::Error> {
+) -> Result<Uuid, diesel::result::Error> {
     let subscriber_id = Uuid::new_v4();
 
     let new_subscription = NewSubscription {
@@ -62,7 +97,7 @@ fn insert_subscriber(
     diesel::insert_into(subscriptions::table)
         .values(&new_subscription)
         .execute(conn)?;
-    Ok((subscriber_id))
+    Ok(subscriber_id)
 }
 #[tracing::instrument(
     name = "Send a confirmation email to a new subscriber",
@@ -107,28 +142,32 @@ pub async fn subscribe(
     pool: web::Data<PgPool>,
     email_client: web::Data<EmailClient>,
     application_base_url: web::Data<ApplicationBaseUrl>,
-) -> HttpResponse {
+) -> Result<HttpResponse, actix_web::Error> {
     let new_subscriber = match form.0.try_into() {
         Ok(form) => form,
-        Err(_) => return HttpResponse::BadRequest().finish(),
+        Err(_) => return Err(actix_web::error::ErrorBadRequest("Invalid form data")),
     };
-    let mut conn = pool.get().expect("afiled to get db connection from pool");
+    let mut conn = pool.get().expect("failed to get db connection from pool");
 
-    let token = conn.transaction::<_, diesel::result::Error, _>(|mut conn| {
-        let subscriber_id = insert_subscriber(&mut conn, &new_subscriber)
-            .map_err(|_| diesel::result::Error::RollbackTransaction)?;
+    let token = conn
+        .transaction::<_, diesel::result::Error, _>(|mut conn| {
+            let subscriber_id = insert_subscriber(&mut conn, &new_subscriber)
+                .map_err(|_| diesel::result::Error::RollbackTransaction)?;
 
-        let subscription_token = generate_subscription_token();
+            let subscription_token = generate_subscription_token();
 
-        store_token(&mut conn, &subscriber_id, &subscription_token)
-            .map_err(|_| diesel::result::Error::RollbackTransaction)?;
-        Ok(subscription_token)
-    });
+            store_token(&mut conn, &subscriber_id, &subscription_token).map_err(|e| {
+                tracing::error!("Failed to store token: {}", e);
+                diesel::result::Error::RollbackTransaction
+            })?;
+            Ok(subscription_token)
+        })
+        .map_err(|e| {
+            tracing::error!("Database transaction error: {}", e);
+            actix_web::error::ErrorInternalServerError("Transaction error")
+        })?;
 
-    let subscription_token = match token {
-        Ok(token) => token.to_string(),
-        Err(_) => return HttpResponse::InternalServerError().finish(),
-    };
+    let subscription_token = token;
 
     if send_confirmation_email(
         &email_client,
@@ -139,9 +178,11 @@ pub async fn subscribe(
     .await
     .is_err()
     {
-        return HttpResponse::InternalServerError().finish();
+        return Err(actix_web::error::ErrorInternalServerError(
+            "Failed to send confirmation email",
+        ));
     }
-    HttpResponse::Ok().finish()
+    Ok(HttpResponse::Ok().finish())
 }
 
 #[tracing::instrument(
@@ -152,13 +193,14 @@ pub fn store_token(
     conn: &mut PgConnection,
     subscriber_id: &Uuid,
     subscription_token: &str,
-) -> Result<(), diesel::result::Error> {
+) -> Result<(), StoreTokenError> {
     diesel::insert_into(subscription_tokens::table)
         .values((
             subs_token_dsl::subscriber_id.eq(subscriber_id),
             subs_token_dsl::subscription_token.eq(subscription_token),
         ))
-        .execute(conn)?;
+        .execute(conn)
+        .map_err(StoreTokenError)?;
     Ok(())
 }
 

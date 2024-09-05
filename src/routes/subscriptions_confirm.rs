@@ -1,6 +1,6 @@
 use crate::{
     db::PgPool,
-    db_models::{Subscription, SubscriptionToken},
+    db_models::SubscriptionToken,
     schema::{
         subscription_tokens::{self, dsl as subs_token_dsl},
         subscriptions::{self, dsl as subs_dsl},
@@ -45,7 +45,7 @@ pub async fn confirm_subscriber(
     let result = web::block(move || {
         let mut conn = pool.get().expect("Couldn't get db connection from Pool");
         let result = diesel::update(subs_dsl::subscriptions.find(subscriber_id))
-            .set((subs_dsl::status.eq(Some("confirmed".to_string()))))
+            .set(subs_dsl::status.eq(Some("confirmed".to_string())))
             .execute(&mut conn)?;
         Ok::<_, diesel::result::Error>(result)
     })
