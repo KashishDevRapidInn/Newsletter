@@ -7,8 +7,10 @@ use crate::schema::subscriptions::{self, dsl::*};
 use crate::startup::ApplicationBaseUrl;
 use actix_web::{web, HttpResponse};
 use chrono::Utc;
+use diesel::pg::PgConnection;
 use diesel::prelude::Insertable;
 use diesel::prelude::*;
+use diesel::r2d2::{ConnectionManager, PooledConnection};
 use rand::distributions::Alphanumeric;
 use rand::{thread_rng, Rng};
 use reqwest;
@@ -40,14 +42,13 @@ fn generate_subscription_token() -> String {
 
 #[tracing::instrument(
     name = "Saving new subscriber details in the database",
-    skip(pool, new_subscriber)
+    skip(conn, new_subscriber)
 )]
 
-async fn insert_subscriber(
-    pool: &PgPool,
+fn insert_subscriber(
+    conn: &mut PgConnection,
     new_subscriber: &NewSubscriber,
 ) -> Result<(Uuid), diesel::result::Error> {
-    let mut conn = pool.get().expect("Couldn't get db connection from Pool");
     let subscriber_id = Uuid::new_v4();
 
     let new_subscription = NewSubscription {
@@ -60,7 +61,7 @@ async fn insert_subscriber(
 
     diesel::insert_into(subscriptions::table)
         .values(&new_subscription)
-        .execute(&mut conn)?;
+        .execute(conn)?;
     Ok((subscriber_id))
 }
 #[tracing::instrument(
@@ -111,20 +112,23 @@ pub async fn subscribe(
         Ok(form) => form,
         Err(_) => return HttpResponse::BadRequest().finish(),
     };
+    let mut conn = pool.get().expect("afiled to get db connection from pool");
 
-    let subscriber_id = match insert_subscriber(&pool, &new_subscriber).await {
-        Ok(subscriber_id) => subscriber_id,
+    let token = conn.transaction::<_, diesel::result::Error, _>(|mut conn| {
+        let subscriber_id = insert_subscriber(&mut conn, &new_subscriber)
+            .map_err(|_| diesel::result::Error::RollbackTransaction)?;
+
+        let subscription_token = generate_subscription_token();
+
+        store_token(&mut conn, &subscriber_id, &subscription_token)
+            .map_err(|_| diesel::result::Error::RollbackTransaction)?;
+        Ok(subscription_token)
+    });
+
+    let subscription_token = match token {
+        Ok(token) => token.to_string(),
         Err(_) => return HttpResponse::InternalServerError().finish(),
     };
-
-    let subscription_token = generate_subscription_token();
-
-    if store_token(&pool, &subscriber_id, &subscription_token)
-        .await
-        .is_err()
-    {
-        return HttpResponse::InternalServerError().finish();
-    }
 
     if send_confirmation_email(
         &email_client,
@@ -142,21 +146,19 @@ pub async fn subscribe(
 
 #[tracing::instrument(
     name = "Store subscription token in the database",
-    skip(subscription_token, pool)
+    skip(subscription_token, conn)
 )]
-pub async fn store_token(
-    pool: &PgPool,
+pub fn store_token(
+    conn: &mut PgConnection,
     subscriber_id: &Uuid,
     subscription_token: &str,
 ) -> Result<(), diesel::result::Error> {
-    let mut conn = pool.get().expect("Failed to get db connection from pool");
-
     diesel::insert_into(subscription_tokens::table)
         .values((
             subs_token_dsl::subscriber_id.eq(subscriber_id),
             subs_token_dsl::subscription_token.eq(subscription_token),
         ))
-        .execute(&mut conn)?;
+        .execute(conn)?;
     Ok(())
 }
 
