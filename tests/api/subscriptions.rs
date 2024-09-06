@@ -145,7 +145,7 @@ async fn subscribe_fails_if_there_is_a_fatal_database_error() {
         .get()
         .expect("Couldn't get db connection from Pool");
     // Sabotage the database
-    diesel::sql_query("ALTER TABLE subscription_tokens DROP COLUMN subscription_token;")
+    diesel::sql_query("ALTER TABLE subscriptions DROP COLUMN email;")
         .execute(&mut conn)
         .expect("Failed to execute sabotage query");
 
