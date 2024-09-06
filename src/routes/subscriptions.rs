@@ -6,6 +6,7 @@ use crate::schema::subscription_tokens::dsl as subs_token_dsl;
 use crate::schema::subscriptions::{self, dsl::*};
 use crate::startup::ApplicationBaseUrl;
 use actix_web::{http::StatusCode, web, HttpResponse, ResponseError};
+use anyhow::Context;
 use chrono::Utc;
 use diesel::pg::PgConnection;
 use diesel::prelude::Insertable;
@@ -75,12 +76,12 @@ pub enum SubscribeError {
     #[error("{0}")]
     ValidationError(String),
 
-    #[error("{1}")]
-    UnexpectedError(#[source] Box<dyn std::error::Error>, String),
+    #[error(transparent)]
+    UnexpectedError(#[from] anyhow::Error),
 }
 impl From<diesel::result::Error> for SubscribeError {
     fn from(error: diesel::result::Error) -> Self {
-        SubscribeError::UnexpectedError(Box::new(error), "Database operation failed.".into())
+        SubscribeError::UnexpectedError(anyhow::anyhow!("Database error: {:?}", error))
     }
 }
 
@@ -88,7 +89,7 @@ impl ResponseError for SubscribeError {
     fn status_code(&self) -> StatusCode {
         match self {
             SubscribeError::ValidationError(_) => StatusCode::BAD_REQUEST,
-            SubscribeError::UnexpectedError(_, _) => StatusCode::INTERNAL_SERVER_ERROR,
+            SubscribeError::UnexpectedError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 }
@@ -171,27 +172,17 @@ pub async fn subscribe(
 ) -> Result<HttpResponse, SubscribeError> {
     let new_subscriber = form.0.try_into().map_err(SubscribeError::ValidationError)?;
 
-    let mut conn = pool.get().map_err(|e| {
-        SubscribeError::UnexpectedError(
-            Box::new(e),
-            "Failed to acquire a Postgres connection from the pool".into(),
-        )
-    })?;
+    let mut conn = pool
+        .get()
+        .context("Failed to acquire a Postgres connection from the pool")?;
+
     let token = conn.transaction::<_, SubscribeError, _>(|mut conn| {
-        let subscriber_id = insert_subscriber(&mut conn, &new_subscriber).map_err(|e| {
-            SubscribeError::UnexpectedError(
-                Box::new(e),
-                "Failed to insert new subscriber in the database.".into(),
-            )
-        })?;
+        let subscriber_id = insert_subscriber(&mut conn, &new_subscriber)
+            .context("Failed to insert new subscriber in the database.")?;
         let subscription_token = generate_subscription_token();
 
-        store_token(&mut conn, &subscriber_id, &subscription_token).map_err(|e| {
-            SubscribeError::UnexpectedError(
-                Box::new(e),
-                "Failed to store the confirmation token for a new subscriber.".into(),
-            )
-        })?;
+        store_token(&mut conn, &subscriber_id, &subscription_token)
+            .context("Failed to store the confirmation token for a new subscriber.")?;
         Ok(subscription_token)
     });
 
@@ -207,9 +198,7 @@ pub async fn subscribe(
         &subscription_token,
     )
     .await
-    .map_err(|e| {
-        SubscribeError::UnexpectedError(Box::new(e), "Failed to send a confirmation email.".into())
-    })?;
+    .context("Failed to send a confirmation email.")?;
 
     Ok(HttpResponse::Ok().finish())
 }
