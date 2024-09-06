@@ -5,7 +5,7 @@ use diesel::prelude::*;
 use std::env;
 use diesel::sql_query;
 use secrecy::{Secret, ExposeSecret};
-
+use diesel::r2d2::PoolError; 
 pub type PgPool = Pool<ConnectionManager<PgConnection>>;
 
 pub fn establish_connection(database_name: &str) -> PgPool {

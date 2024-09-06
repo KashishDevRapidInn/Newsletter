@@ -17,7 +17,7 @@ use wiremock::MockServer;
 
 static TRACING: Lazy<()> = Lazy::new(|| {
     dotenv().ok();
-    let default_filter_level = "diesel= errors, info".to_string();
+    let default_filter_level = "info".to_string();
     let subscriber_name = "test".to_string();
     // We cannot assign the output of `get_subscriber` to a variable based on the value of `TEST_LOG`
     // because the sink is part of the type returned by `get_subscriber`, therefore they are not the
