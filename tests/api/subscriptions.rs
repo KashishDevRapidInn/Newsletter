@@ -152,4 +152,5 @@ async fn subscribe_fails_if_there_is_a_fatal_database_error() {
     let response = app.post_subscriptions(body.into()).await;
 
     assert_eq!(response.status().as_u16(), 500);
+    drop_database(&app.database_name);
 }
