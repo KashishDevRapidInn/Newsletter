@@ -81,7 +81,7 @@ pub async fn get_subscriber_id_from_token(
     let subscriber_id = match result {
         Ok(Ok(tokens)) => tokens.into_iter().next().map(|token| token.subscriber_id),
         Ok(Err(err)) => return Err(err),
-        Err(err) => {
+        Err(_err) => {
             return Err(diesel::result::Error::DatabaseError(
                 diesel::result::DatabaseErrorKind::SerializationFailure,
                 Box::new("The blocking operation was canceled.".to_string()),

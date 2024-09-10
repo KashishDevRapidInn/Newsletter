@@ -32,7 +32,6 @@ mod tests {
     use fake::Fake;
     use quickcheck::{Arbitrary, Gen};
     use rand::rngs::StdRng;
-    use rand::RngCore;
     use rand::SeedableRng;
 
     #[test]
@@ -56,7 +55,7 @@ mod tests {
     struct ValidEmailFixture(pub String);
 
     impl Arbitrary for ValidEmailFixture {
-        fn arbitrary(g: &mut Gen) -> Self {
+        fn arbitrary(_g: &mut Gen) -> Self {
             let seed = 42; // For reproducibility
             let mut rng = StdRng::seed_from_u64(seed);
 

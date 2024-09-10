@@ -2,7 +2,7 @@
 
 #![allow(unused)]
 #![allow(clippy::all)]
-use crate::schema::subscription_tokens;
+use crate::schema::{subscription_tokens, users};
 
 use chrono::offset::Utc;
 use chrono::DateTime;
@@ -24,4 +24,12 @@ pub struct Subscription {
     pub name: String,
     pub subscribed_at: DateTime<Utc>,
     pub status: Option<String>,
+}
+
+#[derive(Queryable, Debug, Identifiable)]
+#[diesel(primary_key(user_id))]
+pub struct User {
+    pub user_id: Uuid,
+    pub username: String,
+    pub password_hash: String,
 }

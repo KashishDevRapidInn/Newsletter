@@ -17,9 +17,14 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    users (user_id) {
+        user_id -> Uuid,
+        username -> Text,
+        password_hash -> Text,
+    }
+}
+
 diesel::joinable!(subscription_tokens -> subscriptions (subscriber_id));
 
-diesel::allow_tables_to_appear_in_same_query!(
-    subscription_tokens,
-    subscriptions,
-);
+diesel::allow_tables_to_appear_in_same_query!(subscription_tokens, subscriptions, users,);

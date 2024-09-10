@@ -7,9 +7,13 @@ use diesel_migrations::MigrationHarness;
 use dotenv::dotenv;
 use newsletter::db::create_database;
 use newsletter::db::PgPool;
+use newsletter::db_models::User;
+use newsletter::schema::users::{self, dsl::*};
 use newsletter::startup::Application;
 use newsletter::telemetry::{get_subscriber, init_subscriber};
 use once_cell::sync::Lazy;
+use secrecy::{ExposeSecret, Secret};
+use sha3::{Digest, Sha3_256};
 use std::env;
 use tokio;
 use uuid::Uuid;
@@ -31,12 +35,42 @@ static TRACING: Lazy<()> = Lazy::new(|| {
     };
 });
 
+pub struct TestUser {
+    pub user_id: Uuid,
+    pub username: String,
+    pub password: String,
+}
+impl TestUser {
+    pub fn generate() -> Self {
+        Self {
+            user_id: Uuid::new_v4(),
+            username: Uuid::new_v4().to_string(),
+            password: Uuid::new_v4().to_string(),
+        }
+    }
+    async fn store(&self, pool: &PgPool) {
+        let hashed_password = sha3::Sha3_256::digest(self.password.as_bytes());
+        let hashed_password = format!("{:x}", hashed_password);
+        let mut conn = pool.get().expect("Failed to get db connection from pool");
+
+        diesel::insert_into(users::table)
+            .values((
+                users::user_id.eq(self.user_id),
+                users::username.eq(self.username.clone()),
+                users::password_hash.eq(hashed_password),
+            ))
+            .execute(&mut conn)
+            .expect("Failed to create test users.");
+    }
+}
+
 pub struct TestApp {
     pub port: u16,
     pub address: String,
     pub db_pool: PgPool,
     pub database_name: String,
     pub email_server: MockServer,
+    pub test_user: TestUser,
 }
 pub struct ConfirmationLinks {
     pub html: reqwest::Url,
@@ -78,12 +112,30 @@ impl TestApp {
         ConfirmationLinks { html, plain_text }
     }
     pub async fn post_newsletters(&self, body: serde_json::Value) -> reqwest::Response {
+        let (user_name, pass_word) = self.test_user().await;
+
         reqwest::Client::new()
             .post(&format!("{}/newsletters", &self.address))
+            .basic_auth(&self.test_user.username, Some(&self.test_user.password))
             .json(&body)
             .send()
             .await
             .expect("Failed to execute request.")
+    }
+    pub async fn test_user(&self) -> (String, String) {
+        let mut conn = self
+            .db_pool
+            .get()
+            .expect("Failed to get db connection from pool");
+        let result: Vec<(String, String)> = users::table
+            .select((users::username, users::password_hash))
+            .limit(1)
+            .load::<(String, String)>(&mut conn)
+            .expect("Failed to get user");
+
+        let (user_name, pass_word) = result[0].clone();
+
+        (user_name, pass_word)
     }
 }
 
@@ -120,11 +172,14 @@ pub async fn spawn_app() -> TestApp {
     let address = format!("http://127.0.0.1:{}", application_port);
     let _ = tokio::spawn(application.run_until_stopped());
 
-    TestApp {
+    let testapp = TestApp {
         port: application_port,
         address,
         db_pool: pool.clone(),
         database_name,
         email_server,
-    }
+        test_user: TestUser::generate(),
+    };
+    testapp.test_user.store(&testapp.db_pool).await;
+    testapp
 }
