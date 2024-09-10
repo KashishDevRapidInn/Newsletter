@@ -2,6 +2,7 @@ use diesel::prelude::*;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations};
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
 
+use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
 use diesel::r2d2::{ConnectionManager, Pool};
 use diesel_migrations::MigrationHarness;
 use dotenv::dotenv;
@@ -13,7 +14,6 @@ use newsletter::startup::Application;
 use newsletter::telemetry::{get_subscriber, init_subscriber};
 use once_cell::sync::Lazy;
 use secrecy::{ExposeSecret, Secret};
-use sha3::{Digest, Sha3_256};
 use std::env;
 use tokio;
 use uuid::Uuid;
@@ -49,8 +49,12 @@ impl TestUser {
         }
     }
     async fn store(&self, pool: &PgPool) {
-        let hashed_password = sha3::Sha3_256::digest(self.password.as_bytes());
-        let hashed_password = format!("{:x}", hashed_password);
+        let salt_argon = SaltString::generate(&mut rand::thread_rng());
+        let hashed_password = Argon2::default()
+            .hash_password(self.password.as_bytes(), &salt_argon)
+            .unwrap()
+            .to_string();
+
         let mut conn = pool.get().expect("Failed to get db connection from pool");
 
         diesel::insert_into(users::table)

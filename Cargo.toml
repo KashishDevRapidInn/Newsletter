@@ -42,7 +42,7 @@ linkify = "0.10.0"
 thiserror = "1.0.63"
 anyhow = "1.0.86"
 base64 = "0.13.0"
-sha3 = "0.10.8"
+argon2 = { version = "0.5.3", features = ["std"] }
 
 [dev-dependencies]
 quickcheck = "1.0.3"
