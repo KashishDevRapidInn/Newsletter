@@ -1,9 +1,14 @@
 use crate::domain::SubscriberEmail;
 use crate::email_client::EmailClient;
+use actix_web::cookie::Key;
 use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
+use actix_web_flash_messages::storage::CookieMessageStore;
+use actix_web_flash_messages::FlashMessagesFramework;
+use secrecy::ExposeSecret;
 use secrecy::Secret;
 use std::net::TcpListener;
+
 // use actix_web::middleware::Logger;
 use tracing_actix_web::TracingLogger;
 
@@ -62,8 +67,14 @@ impl Application {
             let listener = TcpListener::bind(&address)?;
             (listener, port)
         };
-
-        let server = run(listener, pool, email_client, application_base_url)?;
+        let hmac_secret = env::var("HMAC_SECRET").expect("hmac_Secret can't be reterived");
+        let server = run(
+            listener,
+            pool,
+            email_client,
+            application_base_url,
+            Secret::new(hmac_secret),
+        )?;
 
         Ok(Self {
             port: actual_port,
@@ -88,17 +99,23 @@ pub fn run(
     db_pool: PgPool,
     email_client: EmailClient,
     application_base_url: String,
+    hmac_secret: Secret<String>,
 ) -> Result<Server, std::io::Error> {
     let application_base_url = web::Data::new(ApplicationBaseUrl(application_base_url));
     let db_pool = web::Data::new(db_pool);
     let email_client = web::Data::new(email_client);
+    let message_store =
+        CookieMessageStore::builder(Key::from(hmac_secret.expose_secret().as_bytes())).build();
+    let message_framework = FlashMessagesFramework::builder(message_store).build();
 
     let server = HttpServer::new(move || {
         App::new()
+            .wrap(message_framework.clone())
             .wrap(TracingLogger::default())
             .app_data(db_pool.clone())
             .app_data(email_client.clone())
             .app_data(application_base_url.clone())
+            .app_data(web::Data::new(HmacSecret(hmac_secret.clone())))
             .route("/health_check", web::get().to(health_check))
             .route("/subscriptions", web::post().to(subscribe))
             .route("/subscriptions/confirm", web::get().to(confirm))
@@ -112,3 +129,6 @@ pub fn run(
     // No .await here
     Ok(server)
 }
+
+#[derive(Clone)]
+pub struct HmacSecret(pub Secret<String>);
