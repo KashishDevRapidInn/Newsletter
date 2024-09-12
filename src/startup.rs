@@ -10,7 +10,11 @@ use tracing_actix_web::TracingLogger;
 use crate::db::PgPool;
 
 use crate::routes::{
-    health_check::health_check, newsletter::publish_newsletter, subscriptions::subscribe,
+    health_check::health_check,
+    home::home::home,
+    login::{get::login_form, post::login},
+    newsletter::publish_newsletter,
+    subscriptions::subscribe,
     subscriptions_confirm::confirm,
 };
 
@@ -99,6 +103,9 @@ pub fn run(
             .route("/subscriptions", web::post().to(subscribe))
             .route("/subscriptions/confirm", web::get().to(confirm))
             .route("/newsletters", web::post().to(publish_newsletter))
+            .route("/", web::get().to(home))
+            .route("/login", web::get().to(login_form))
+            .route("/login", web::post().to(login))
     })
     .listen(listener)?
     .run();
