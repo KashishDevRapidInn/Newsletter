@@ -50,8 +50,14 @@ sha = "1.0.3"
 sha2 = "0.10.8"
 hex = "0.4.3"
 actix-web-flash-messages = { version = "0.5.0", features = ["cookies"] }
+actix-session = { version = "0.10.1", features = ["redis-session-rustls"] }
+#actix-session = {version= "0.10.1", features=["reddis-session-rustls"]}
 
 [dev-dependencies]
 quickcheck = "1.0.3"
 quickcheck_macros = "1.0.0"
 wiremock = "0.6.1"
+
+
+
+
