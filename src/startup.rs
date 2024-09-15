@@ -71,7 +71,8 @@ impl Application {
             (listener, port)
         };
 
-        let redis_uri = Secret::new(env::var("REDIS_URI").expect("Failed to get redis configurations"));
+        let redis_uri =
+            Secret::new(env::var("REDIS_URI").expect("Failed to get redis configurations"));
         let server = run(
             listener,
             pool,
@@ -116,7 +117,13 @@ async fn run(
     let message_store =
         CookieMessageStore::builder(Key::from(hmac_secret.expose_secret().as_bytes())).build();
     let message_framework = FlashMessagesFramework::builder(message_store).build();
-    let redis_store = RedisSessionStore::new(redis_uri.expose_secret()).await?;
+    // let redis_store = RedisSessionStore::new(redis_uri.expose_secret()).await?;
+    let redis_store = RedisSessionStore::new(redis_uri.expose_secret())
+        .await
+        .map_err(|e| {
+            eprintln!("Failed to create Redis session store: {:?}", e);
+            std::io::Error::new(std::io::ErrorKind::Other, "Redis connection failed")
+        })?;
     let server = HttpServer::new(move || {
         App::new()
             .wrap(message_framework.clone())
