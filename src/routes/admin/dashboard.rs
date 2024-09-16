@@ -1,8 +1,8 @@
 use crate::db::PgPool;
 use crate::db_models::User;
 use crate::schema::users::dsl::*;
-use actix_session::Session;
-use actix_web::http::header::ContentType;
+use crate::session_state::TypedSession;
+use actix_web::http::header::{ContentType, LOCATION};
 use actix_web::web;
 use actix_web::{Error as ActixError, HttpResponse};
 use anyhow::Context;
@@ -18,13 +18,15 @@ where
     actix_web::error::ErrorInternalServerError(e)
 }
 pub async fn admin_dashboard(
-    session: Session,
+    session: TypedSession,
     pool: web::Data<PgPool>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    let user_name = if let Some(id_user) = session.get::<Uuid>("user_id").map_err(e500)? {
+    let user_name = if let Some(id_user) = session.get_user_id().map_err(e500)? {
         get_username(id_user, &pool).await.map_err(e500)?
     } else {
-        todo!()
+        return Ok(HttpResponse::SeeOther()
+            .insert_header((LOCATION, "/login"))
+            .finish());
     };
     Ok(HttpResponse::Ok()
         .content_type(ContentType::html())
