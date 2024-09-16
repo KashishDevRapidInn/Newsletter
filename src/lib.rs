@@ -3,6 +3,7 @@ pub mod db;
 pub mod db_models;
 pub mod domain;
 pub mod email_client;
+pub mod middleware;
 mod routes;
 pub mod schema;
 pub mod session_state;

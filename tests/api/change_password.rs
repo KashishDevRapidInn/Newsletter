@@ -53,7 +53,8 @@ async fn new_password_fields_must_match() {
     assert_is_redirect_to(&response, "/admin/password");
     // Act - Part 3 - Follow the redirect
     let html_page = app.get_change_password_html().await;
-    assert!(html_page.contains("<p><i>YNew Password and Check new password doesn't match</i></p>"));
+    dbg!(&html_page);
+    assert!(html_page.contains("<p><i>New Password and Check new password doesn't match</i></p>"));
     drop_database(&app.database_name);
 }
 
