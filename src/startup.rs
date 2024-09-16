@@ -17,7 +17,11 @@ use tracing_actix_web::TracingLogger;
 use crate::db::PgPool;
 
 use crate::routes::{
-    admin::dashboard::admin_dashboard,
+    admin::{
+        dashboard::admin_dashboard,
+        logout::log_out,
+        password::{get::change_password_form, post::change_password},
+    },
     health_check::health_check,
     home::home::home,
     login::{get::login_form, post::login},
@@ -143,6 +147,9 @@ async fn run(
             .route("/login", web::get().to(login_form))
             .route("/login", web::post().to(login))
             .route("/admin/dashboard", web::get().to(admin_dashboard))
+            .route("/admin/password", web::get().to(change_password_form))
+            .route("/admin/password", web::post().to(change_password))
+            .route("/admin/logout", web::post().to(log_out))
     })
     .listen(listener)?
     .run();

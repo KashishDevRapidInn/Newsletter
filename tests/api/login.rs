@@ -1,5 +1,6 @@
 use crate::helpers::assert_is_redirect_to;
 use crate::helpers::spawn_app;
+use newsletter::db::drop_database;
 use reqwest::header::HeaderValue;
 use std::collections::HashSet;
 
@@ -25,6 +26,7 @@ async fn an_error_flash_message_is_set_on_failure() {
     // Part-2 - Reload the login page
     let html_page = app.get_login_html().await;
     assert!(!html_page.contains(r#"<p><i>Authentication failed</i></p>"#));
+    drop_database(&app.database_name);
 }
 
 #[tokio::test]
@@ -41,4 +43,5 @@ async fn redirect_to_admin_dashboard_after_login_success() {
     // // Act - Part 2 - Follow the redirect
     // let html_page = app.get_admin_dashboard().await;
     // assert!(html_page.contains(&format!("Welcome {}", app.test_user.username)));
+    drop_database(&app.database_name);
 }

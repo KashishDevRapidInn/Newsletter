@@ -4,7 +4,8 @@ use crate::{
     telemetry::spawn_blocking_with_tracing,
 };
 use anyhow::Context;
-use argon2::{Argon2, PasswordHash, PasswordVerifier};
+use argon2::password_hash::SaltString;
+use argon2::{Algorithm, Argon2, Params, PasswordHash, PasswordHasher, PasswordVerifier, Version};
 use diesel::prelude::*;
 use secrecy::{ExposeSecret, Secret};
 use uuid::Uuid;
@@ -105,4 +106,32 @@ pub async fn validate_credentials(
     id_user
         .ok_or_else(|| anyhow::anyhow!("Unknown username."))
         .map_err(AuthError::InvalidCredentials)
+}
+
+#[tracing::instrument(name = "Change password", skip(password, pool, id_user))]
+pub async fn change_password(
+    id_user: uuid::Uuid,
+    password: Secret<String>,
+    pool: &PgPool,
+) -> Result<(), anyhow::Error> {
+    let hashed_password = spawn_blocking_with_tracing(move || compute_password_hash(password))
+        .await?
+        .context("Failed to hash password")?;
+
+    let mut conn = pool.get().expect("Couldn't get db connection from Pool");
+    diesel::update(users::table.filter(users::user_id.eq(id_user)))
+        .set(users::password_hash.eq(hashed_password.expose_secret()))
+        .execute(&mut conn)
+        .map_err(|e| anyhow::anyhow!("Failed to update password in database: {}", e))?;
+
+    Ok(())
+}
+
+fn compute_password_hash(password: Secret<String>) -> Result<Secret<String>, anyhow::Error> {
+    let salt_argon = SaltString::generate(&mut rand::thread_rng());
+    let hashed_password = Argon2::default()
+        .hash_password(password.expose_secret().as_bytes(), &salt_argon)
+        .unwrap()
+        .to_string();
+    Ok(Secret::new(hashed_password))
 }
